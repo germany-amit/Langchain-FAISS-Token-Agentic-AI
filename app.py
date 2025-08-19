@@ -1,51 +1,54 @@
 import streamlit as st
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.text_splitter import CharacterTextSplitter
 from PyPDF2 import PdfReader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from sentence_transformers import SentenceTransformer
+from transformers import pipeline
 
 # ---- STREAMLIT UI ----
 st.set_page_config(page_title="GenAI MVP", page_icon="🤖", layout="wide")
-st.title("🧠 GenAI Architect Demo - RAG + Agentic AI + Guardrails")
-
-st.sidebar.header("Settings")
-openai_api_key = st.sidebar.text_input("🔑 Enter OpenAI API Key:", type="password")
+st.title("🧠 GenAI Architect Demo - RAG + Agentic AI + Guardrails (Open Source)")
 
 uploaded_file = st.file_uploader("📄 Upload a text or PDF file", type=["txt", "pdf"])
-
 query = st.text_input("💬 Ask your question:")
 
-agent = st.radio("🤖 Choose Agent:", ["RAG Agent", "Guardrail Agent"])
+agent = st.radio("🤖 Choose Agent:", ["Agent 1 (Retriever)", "Agent 2 (Retriever + QA)"])
 
-# ---- FUNCTION: SIMPLE GUARDRAIL ----
-def guardrail_check(user_input: str) -> bool:
-    banned = ["ignore", "delete", "password", "hack"]
-    return any(b in user_input.lower() for b in banned)
+# ---- Load models ----
+embedder = SentenceTransformer("all-MiniLM-L6-v2")   # free embeddings
+qa_model = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
 
-# ---- RAG PIPELINE ----
-if openai_api_key and uploaded_file:
-    if uploaded_file.type == "application/pdf":
+def load_pdf(file):
+    if file.type == "application/pdf":
+        pdf = PdfReader(file)
         text = ""
-        pdf = PdfReader(uploaded_file)
         for page in pdf.pages:
             text += page.extract_text() or ""
+        return text
     else:
-        text = uploaded_file.read().decode("utf-8")
+        return file.read().decode("utf-8")
 
-    # Split + Embed
-    splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+if uploaded_file:
+    text = load_pdf(uploaded_file)
+    splitter = CharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     docs = splitter.split_text(text)
 
-    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
-    vectorstore = FAISS.from_texts(docs, embeddings)
-
-    llm = ChatOpenAI(openai_api_key=openai_api_key, temperature=0)
-    qa = RetrievalQA.from_chain_type(llm=llm, retriever=vectorstore.as_retriever())
+    # Create vector store
+    doc_embeddings = embedder.encode(docs)
+    vectorstore = FAISS.from_embeddings(doc_embeddings, docs, embedder)
 
     if query:
-        if agent == "Guardrail Agent" and guardrail_check(query):
-            st.error("🚫 Blocked by Guardrails: Unsafe or restricted request.")
-        else:
-            answer = qa.run(query)
-            st.success(answer)
+        # Agent 1: Simple retriever
+        if agent == "Agent 1 (Retriever)":
+            docs_with_scores = vectorstore.similarity_search(query, k=2)
+            st.subheader("🤖 Agent 1 Answer:")
+            for d in docs_with_scores:
+                st.write(d.page_content)
+
+        # Agent 2: Retriever + QA model
+        elif agent == "Agent 2 (Retriever + QA)":
+            docs_with_scores = vectorstore.similarity_search(query, k=2)
+            context = " ".join([d.page_content for d in docs_with_scores])
+            result = qa_model(question=query, context=context)
+            st.subheader("🤖 Agent 2 Answer:")
+            st.write(result["answer"])
