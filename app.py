@@ -1,10 +1,9 @@
 import streamlit as st
-import os
-from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.chat_models import ChatOpenAI
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.text_splitter import CharacterTextSplitter
+from PyPDF2 import PdfReader
 
 # ---- STREAMLIT UI ----
 st.set_page_config(page_title="GenAI MVP", page_icon="🤖", layout="wide")
@@ -27,11 +26,10 @@ def guardrail_check(user_input: str) -> bool:
 # ---- RAG PIPELINE ----
 if openai_api_key and uploaded_file:
     if uploaded_file.type == "application/pdf":
-        from PyPDF2 import PdfReader
         text = ""
         pdf = PdfReader(uploaded_file)
         for page in pdf.pages:
-            text += page.extract_text()
+            text += page.extract_text() or ""
     else:
         text = uploaded_file.read().decode("utf-8")
 
