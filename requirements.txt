@@ -1,8 +1,6 @@
 streamlit
-langchain
-langchain-community
-langchain-openai
-faiss-cpu
-openai
-tiktoken
 PyPDF2
+sentence-transformers
+transformers
+torch
+faiss-cpu
